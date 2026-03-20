@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IRON HOLD — Tower Defense</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Teko:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  --bg: #0a0c0f;
+  --bg2: #0f1318;
+  --bg3: #151b22;
+  --panel: #111620;
+  --border: #1e2a38;
+  --border2: #2a3a50;
+  --accent: #00e5ff;
+  --accent2: #ff6b35;
+  --accent3: #39ff14;
+  --gold: #ffd700;
+  --red: #ff3838;
+  --purple: #a855f7;
+  --text: #c8d8e8;
+  --text2: #6a8aaa;
+  --text3: #3a5a7a;
+  --teko: 'Teko', sans-serif;
+  --mono: 'Share Tech Mono', monospace;
+  --smono: 'Space Mono', monospace;
+  --tile: 40px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--mono); }
+
+/* SCANLINE OVERLAY */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ─── TOP BAR ─────────────────────────────────────────────────────────────── */
+#topbar {
+  display: flex; align-items: center; gap: 0;
+  background: var(--panel); border-bottom: 1px solid var(--border2);
+  padding: 0 16px; height: 44px; flex-shrink: 0;
+}
+#logo {
+  font-family: var(--teko); font-size: 26px; font-weight: 600; letter-spacing: 3px;
+  color: var(--accent); text-transform: uppercase; margin-right: 24px;
+  text-shadow: 0 0 20px rgba(0,229,255,0.4);
+}
+.stat-box {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 14px; height: 44px; border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+.stat-box .label { color: var(--text3); text-transform: uppercase; letter-spacing: 1px; font-size: 10px; }
+.stat-box .val { font-family: var(--teko); font-size: 20px; font-weight: 500; line-height: 1; }
+.stat-box.gold .val { color: var(--gold); }
+.stat-box.lives .val { color: var(--red); }
+.stat-box.wave .val { color: var(--accent); }
+.stat-box.score .val { color: var(--accent3); }
+#topbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.ctrl-btn {
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text2);
+  font-family: var(--mono); font-size: 11px; padding: 4px 10px; cursor: pointer;
+  letter-spacing: 1px; text-transform: uppercase; transition: all 0.15s;
+}
+.ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ctrl-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(255,107,53,0.1); }
+#speed-display { font-size: 11px; color: var(--text3); }
+
+/* ─── MAIN ────────────────────────────────────────────────────────────────── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ─── LEFT PANEL ──────────────────────────────────────────────────────────── */
+#left-panel {
+  width: 220px; flex-shrink: 0;
+  background: var(--panel); border-right: 1px solid var(--border2);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.panel-header {
+  font-family: var(--teko); font-size: 14px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text3); padding: 8px 12px 6px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#troop-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  padding: 8px; overflow-y: auto; flex: 1;
+}
+.troop-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  padding: 6px 4px; cursor: pointer; text-align: center;
+  transition: all 0.15s; position: relative; user-select: none;
+}
+.troop-card:hover { border-color: var(--border2); background: #1a2230; }
+.troop-card.selected { border-color: var(--accent); background: rgba(0,229,255,0.08); box-shadow: inset 0 0 8px rgba(0,229,255,0.1); }
+.troop-card.cant-afford { opacity: 0.4; cursor: not-allowed; }
+.troop-icon { font-size: 22px; line-height: 1; margin-bottom: 2px; }
+.troop-name { font-family: var(--teko); font-size: 13px; font-weight: 500; color: var(--text); letter-spacing: 0.5px; line-height: 1; }
+.troop-cost { font-size: 10px; color: var(--gold); margin-top: 1px; }
+.troop-lock { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+/* ─── CANVAS ──────────────────────────────────────────────────────────────── */
+#canvas-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); overflow: hidden; position: relative;
+}
+#gameCanvas { display: block; image-rendering: pixelated; cursor: crosshair; }
+#canvas-wrap.menu-mode { cursor: default; }
+
+/* ─── RIGHT PANEL ─────────────────────────────────────────────────────────── */
+#right-panel {
+  width: 220px; flex-shrink: 0;
+  background: var(--panel); border-left: 1px solid var(--border2);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#info-box { padding: 8px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 130px; }
+#info-title { font-family: var(--teko); font-size: 20px; color: var(--accent); letter-spacing: 1px; }
+#info-stats { font-size: 10px; color: var(--text2); line-height: 1.8; margin-top: 4px; }
+#info-desc { font-size: 10px; color: var(--text3); margin-top: 6px; line-height: 1.5; }
+#info-upgrade-btn {
+  margin-top: 8px; width: 100%;
+  background: transparent; border: 1px solid var(--border2);
+  color: var(--text2); font-family: var(--mono); font-size: 10px;
+  padding: 5px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+  transition: all 0.15s;
+}
+#info-upgrade-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+#info-sell-btn {
+  margin-top: 4px; width: 100%;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text3); font-family: var(--mono); font-size: 10px;
+  padding: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+  transition: all 0.15s;
+}
+#info-sell-btn:hover { border-color: var(--red); color: var(--red); }
+
+#wave-info { padding: 8px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#wave-info .panel-header { padding: 0 0 4px; border: none; }
+#wave-bar-wrap { height: 6px; background: var(--bg3); border: 1px solid var(--border); margin-top: 4px; }
+#wave-bar { height: 100%; background: var(--accent); transition: width 0.3s; width: 0%; }
+#wave-next-label { font-size: 10px; color: var(--text3); margin-top: 4px; }
+
+#log-panel { flex: 1; overflow-y: auto; padding: 6px 12px; }
+#log-panel .panel-header { padding: 0 0 4px; border: none; position: sticky; top: 0; background: var(--panel); }
+#log-entries { font-size: 10px; color: var(--text3); line-height: 1.9; }
+#log-entries .entry-kill { color: #4a9; }
+#log-entries .entry-wave { color: var(--accent); }
+#log-entries .entry-gold { color: var(--gold); }
+#log-entries .entry-warn { color: var(--accent2); }
+#log-entries .entry-boss { color: var(--purple); }
+
+/* ─── BOTTOM BAR ──────────────────────────────────────────────────────────── */
+#bottombar {
+  height: 32px; background: var(--panel); border-top: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 12px; gap: 16px; flex-shrink: 0;
+}
+#bottombar-msg { font-size: 10px; color: var(--text3); flex: 1; }
+#interest-note { font-size: 10px; color: var(--gold); opacity: 0.7; }
+
+/* ─── OVERLAY SCREENS ─────────────────────────────────────────────────────── */
+#overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.88);
+  display: flex; align-items: center; justify-content: center;
+}
+#overlay.hidden { display: none; }
+.overlay-box {
+  background: var(--panel); border: 1px solid var(--border2);
+  padding: 40px 48px; text-align: center; max-width: 480px; width: 90%;
+}
+.overlay-title {
+  font-family: var(--teko); font-size: 52px; font-weight: 600;
+  color: var(--accent); letter-spacing: 4px; text-transform: uppercase;
+  text-shadow: 0 0 30px rgba(0,229,255,0.5);
+  line-height: 1;
+}
+.overlay-sub {
+  font-size: 11px; color: var(--text2); letter-spacing: 2px; margin: 8px 0 24px;
+  text-transform: uppercase;
+}
+.overlay-stats { margin: 16px 0; font-size: 12px; color: var(--text2); line-height: 2.2; text-align: left; }
+.overlay-stats span { color: var(--text); float: right; }
+.overlay-btn {
+  background: var(--accent); color: var(--bg); border: none;
+  font-family: var(--teko); font-size: 22px; font-weight: 600;
+  letter-spacing: 3px; padding: 10px 40px; cursor: pointer;
+  text-transform: uppercase; transition: all 0.2s; display: block; width: 100%; margin-top: 16px;
+}
+.overlay-btn:hover { background: #fff; transform: translateY(-1px); }
+.overlay-btn.secondary {
+  background: transparent; color: var(--text2); border: 1px solid var(--border2);
+  font-size: 14px; letter-spacing: 2px; margin-top: 8px;
+}
+.overlay-btn.secondary:hover { border-color: var(--accent2); color: var(--accent2); background: transparent; transform: none; }
+
+/* ─── FLOATING DAMAGE NUMBERS ─────────────────────────────────────────────── */
+.dmg-float {
+  position: absolute; pointer-events: none; font-family: var(--teko);
+  font-size: 16px; font-weight: 600; z-index: 100;
+  animation: floatUp 0.9s ease-out forwards;
+}
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-32px) scale(0.8); }
+}
+
+/* ─── SCROLLBAR ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* ─── BLACK MARKET ─────────────────────────────────────────────────────────── */
+#market-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+}
+#market-overlay.hidden { display: none; }
+.market-box {
+  background: var(--panel); border: 1px solid var(--purple);
+  padding: 24px 28px; width: 480px; max-width: 95vw;
+  box-shadow: 0 0 40px rgba(168,85,247,0.15);
+}
+.market-title {
+  font-family: var(--teko); font-size: 28px; color: var(--purple);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px;
+}
+.market-sub { font-size: 10px; color: var(--text3); margin-bottom: 16px; letter-spacing: 1px; }
+.market-items { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.market-item {
+  background: var(--bg3); border: 1px solid var(--border2); padding: 10px;
+  cursor: pointer; transition: all 0.15s;
+}
+.market-item:hover { border-color: var(--purple); background: rgba(168,85,247,0.06); }
+.market-item.cant-afford { opacity: 0.4; cursor: not-allowed; }
+.market-item-name { font-family: var(--teko); font-size: 16px; color: var(--text); }
+.market-item-desc { font-size: 9px; color: var(--text3); line-height: 1.5; margin: 3px 0; }
+.market-item-cost { font-size: 11px; color: var(--gold); }
+.market-close {
+  background: transparent; border: 1px solid var(--border2); color: var(--text3);
+  font-family: var(--mono); font-size: 11px; padding: 6px 16px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: 1px; transition: all 0.15s; float: right;
+}
+.market-close:hover { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div id="logo">Iron Hold</div>
+    <div class="stat-box gold">
+      <div>
+        <div class="label">Gold</div>
+        <div class="val" id="stat-gold">150</div>
+      </div>
+    </div>
+    <div class="stat-box lives">
+      <div>
+        <div class="label">Lives</div>
+        <div class="val" id="stat-lives">20</div>
+      </div>
+    </div>
+    <div class="stat-box wave">
+      <div>
+        <div class="label">Wave</div>
+        <div class="val" id="stat-wave">0</div>
+      </div>
+    </div>
+    <div class="stat-box score">
+      <div>
+        <div class="label">Score</div>
+        <div class="val" id="stat-score">0</div>
+      </div>
+    </div>
+    <div id="topbar-right">
+      <span id="speed-display">1×</span>
+      <button class="ctrl-btn" id="btn-speed" onclick="cycleSpeed()">Speed</button>
+      <button class="ctrl-btn" id="btn-wave" onclick="startWave()">▶ Send Wave</button>
+      <button class="ctrl-btn" id="btn-market" onclick="openMarket()">⚗ Market</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <!-- LEFT: TROOP SHOP -->
+    <div id="left-panel">
+      <div class="panel-header">◈ Deploy Troops</div>
+      <div id="troop-grid"></div>
+    </div>
+
+    <!-- CANVAS -->
+    <div id="canvas-wrap">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- RIGHT: INFO + LOG -->
+    <div id="right-panel">
+      <div id="info-box">
+        <div id="info-title">SELECT TILE</div>
+        <div id="info-stats"></div>
+        <div id="info-desc">Click a troop to deploy it, or click an existing troop to view stats and upgrades.</div>
+        <button id="info-upgrade-btn" style="display:none" onclick="upgradeSelected()">⬆ Upgrade</button>
+        <button id="info-sell-btn" style="display:none" onclick="sellSelected()">✕ Sell</button>
+      </div>
+      <div id="wave-info">
+        <div class="panel-header">Wave Progress</div>
+        <div id="wave-bar-wrap"><div id="wave-bar"></div></div>
+        <div id="wave-next-label">Ready for wave 1</div>
+      </div>
+      <div id="log-panel">
+        <div class="panel-header">◈ Combat Log</div>
+        <div id="log-entries"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottombar">
+    <div id="bottombar-msg">Click empty tiles to place selected troop. Right-click to cancel selection.</div>
+    <div id="interest-note" id="interest-note"></div>
+  </div>
+</div>
+
+<!-- OVERLAY -->
+<div id="overlay" class="hidden">
+  <div class="overlay-box">
+    <div class="overlay-title" id="overlay-title">IRON HOLD</div>
+    <div class="overlay-sub" id="overlay-sub">Tower Defense</div>
+    <div class="overlay-stats" id="overlay-stats"></div>
+    <button class="overlay-btn" id="overlay-btn1" onclick="overlayBtn1()">▶ Start Game</button>
+    <button class="overlay-btn secondary" id="overlay-btn2" onclick="overlayBtn2()" style="display:none">Restart</button>
+  </div>
+</div>
+
+<!-- BLACK MARKET -->
+<div id="market-overlay" class="hidden">
+  <div class="market-box">
+    <div class="market-title">⚗ Black Market</div>
+    <div class="market-sub">Rare upgrades — refreshes each wave</div>
+    <div class="market-items" id="market-items"></div>
+    <button class="market-close" onclick="closeMarket()">Close</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// GAME ENGINE
+// ═══════════════════════════════════════════════════════
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Grid
+const COLS = 22, ROWS = 14, T = 40;
+let offsetX = 0, offsetY = 0;
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  canvas.width = COLS * T; canvas.height = ROWS * T;
+  offsetX = Math.max(0, (w - canvas.width) / 2);
+  offsetY = Math.max(0, (h - canvas.height) / 2);
+  canvas.style.marginLeft = offsetX + 'px';
+  canvas.style.marginTop = offsetY + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ─── PATH DEFINITION ────────────────────────────────────
+const PATH_COORDS = [
+  [0,4],[1,4],[2,4],[3,4],[4,4],[4,3],[4,2],[4,1],[5,1],[6,1],[7,1],[8,1],[8,2],[8,3],[8,4],[8,5],[8,6],
+  [9,6],[10,6],[11,6],[11,5],[11,4],[11,3],[12,3],[13,3],[14,3],[14,4],[14,5],[14,6],[14,7],[14,8],
+  [13,8],[12,8],[11,8],[10,8],[9,8],[8,8],[7,8],[7,9],[7,10],[7,11],[8,11],[9,11],[10,11],[11,11],
+  [12,11],[13,11],[14,11],[15,11],[16,11],[17,11],[17,10],[17,9],[17,8],[17,7],[18,7],[19,7],[20,7],[21,7]
+];
+const PATH_SET = new Set(PATH_COORDS.map(([c,r]) => `${c},${r}`));
+
+// ─── STATE ───────────────────────────────────────────────
+let state = {
+  gold: 150, lives: 20, wave: 0, score: 0,
+  waveActive: false, waveEnemiesLeft: 0, waveSpawnTimer: 0,
+  selectedTroopType: null, selectedTile: null,
+  troops: [], enemies: [], projectiles: [],
+  gameOver: false, gameStarted: false,
+  speed: 1, paused: false,
+  marketItems: [], marketBought: [],
+  prestigeBonus: { damage: 0, range: 0, gold: 0 },
+  highScore: 0, totalRuns: 0,
+  particles: [],
+  floatingTexts: [],
+  lastBossWave: 0,
+};
+
+// ─── TROOP DEFINITIONS ───────────────────────────────────
+const TROOP_DEFS = {
+  archer:   { name:'Archer',   icon:'🏹', cost:60,  dmg:12, range:3.5, rate:1.2, color:'#7bc47b', desc:'Balanced attacker. Fast, decent range.', hitFlying:false, detect:false, aoe:0, poison:0, slow:0, chain:0, heal:0, econ:0 },
+  crossbow: { name:'Crossbow', icon:'⚙️', cost:80,  dmg:28, range:3.0, rate:0.5, color:'#8888cc', desc:'Slow but hits like a truck. Armor piercing.', hitFlying:false, detect:false, aoe:0, poison:0, slow:0, chain:0, heal:0, econ:0, armorPierce:true },
+  slinger:  { name:'Slinger',  icon:'🌀', cost:40,  dmg:6,  range:2.5, rate:2.5, color:'#aaccaa', desc:'Fast but weak. Good for early swarms.', hitFlying:false, detect:false, aoe:0, poison:0, slow:0, chain:0, heal:0, econ:0 },
+  mage:     { name:'Mage',     icon:'🔮', cost:120, dmg:20, range:2.8, rate:0.8, color:'#cc77ff', desc:'Area-of-effect damage. Hits all in radius.', hitFlying:true,  detect:false, aoe:1.2, poison:0, slow:0, chain:0, heal:0, econ:0 },
+  lightning:{ name:'Lightning',icon:'⚡', cost:150, dmg:18, range:3.2, rate:0.7, color:'#ffee44', desc:'Chains to 3 nearby enemies.', hitFlying:true,  detect:false, aoe:0, poison:0, slow:0, chain:3, heal:0, econ:0 },
+  poison:   { name:'Poison',   icon:'☠️', cost:90,  dmg:5,  range:3.0, rate:1.0, color:'#55cc88', desc:'Applies poison DoT. Stacks.', hitFlying:false, detect:false, aoe:0, poison:8, slow:0, chain:0, heal:0, econ:0 },
+  freezer:  { name:'Freezer',  icon:'❄️', cost:110, dmg:4,  range:2.5, rate:0.9, color:'#88ccff', desc:'Slows enemies by 60%. Very effective.', hitFlying:false, detect:false, aoe:0, poison:0, slow:0.6, chain:0, heal:0, econ:0 },
+  mortar:   { name:'Mortar',   icon:'💣', cost:180, dmg:45, range:5.0, rate:0.35,color:'#cc8844', desc:'Long-range AoE splash. Overkill.', hitFlying:false, detect:false, aoe:1.8, poison:0, slow:0, chain:0, heal:0, econ:0 },
+  sniper:   { name:'Sniper',   icon:'🎯', cost:160, dmg:80, range:7.0, rate:0.4, color:'#ff8844', desc:'Extreme range, single target. Melts bosses.', hitFlying:true,  detect:true,  aoe:0, poison:0, slow:0, chain:0, heal:0, econ:0 },
+  healer:   { name:'Healer',   icon:'💊', cost:140, dmg:0,  range:2.5, rate:1.0, color:'#ff99cc', desc:'Boosts nearby troops +25% damage.', hitFlying:false, detect:false, aoe:0, poison:0, slow:0, chain:0, heal:1, econ:0 },
+  econ:     { name:'Miner',    icon:'💰', cost:100, dmg:0,  range:0,   rate:0,   color:'#ffd700', desc:'Generates 8 gold per wave.', hitFlying:false, detect:false, aoe:0, poison:0, slow:0, chain:0, heal:0, econ:8 },
+  detector: { name:'Detector', icon:'📡', cost:70,  dmg:3,  range:3.5, rate:1.5, color:'#00e5ff', desc:'Reveals invisible enemies. Light attack.', hitFlying:true,  detect:true,  aoe:0, poison:0, slow:0, chain:0, heal:0, econ:0 },
+};
+
+// ─── UPGRADE TREES ───────────────────────────────────────
+const UPGRADES = {
+  archer:    [
+    { name:'Longbow',      cost:80,  effect:'range+1.5, dmg+5',    apply: t => { t.range+=1.5; t.dmg+=5; } },
+    { name:'Rapidfire',    cost:100, effect:'rate×1.8',            apply: t => { t.rate*=1.8; } },
+    { name:'Flaming Arrow',cost:120, effect:'poison+12, dmg+8',    apply: t => { t.poison=12; t.dmg+=8; } },
+  ],
+  crossbow:  [
+    { name:'Ballista',     cost:100, effect:'dmg+30, range+1',     apply: t => { t.dmg+=30; t.range+=1; } },
+    { name:'Burst Bolt',   cost:90,  effect:'rate×1.6',            apply: t => { t.rate*=1.6; } },
+    { name:'Armor Break',  cost:120, effect:'dmg×2 vs armored',    apply: t => { t.armorBreak=true; } },
+  ],
+  mage:      [
+    { name:'Arcane',       cost:110, effect:'aoe+0.6, dmg+10',     apply: t => { t.aoe+=0.6; t.dmg+=10; } },
+    { name:'Inferno',      cost:130, effect:'poison+15 in aoe',    apply: t => { t.aoePoison=15; } },
+    { name:'Void Blast',   cost:150, effect:'dmg×2',               apply: t => { t.dmg*=2; } },
+  ],
+  lightning: [
+    { name:'Storm Coil',   cost:120, effect:'chain+2',             apply: t => { t.chain+=2; } },
+    { name:'Overcharge',   cost:140, effect:'dmg×1.5, slow+0.3',   apply: t => { t.dmg*=1.5; t.slow+=0.3; } },
+    { name:'Ball Lightning',cost:160,effect:'aoe+1.0',             apply: t => { t.aoe=1.0; } },
+  ],
+  poison:    [
+    { name:'Venom',        cost:90,  effect:'poison×2',            apply: t => { t.poison*=2; } },
+    { name:'Plague Cloud', cost:110, effect:'aoe+0.8',             apply: t => { t.aoe=0.8; } },
+    { name:'Corrode',      cost:100, effect:'reduce armor 50%',    apply: t => { t.corrode=true; } },
+  ],
+  freezer:   [
+    { name:'Deep Freeze',  cost:100, effect:'slow+0.2, dmg+3',     apply: t => { t.slow+=0.2; t.dmg+=3; } },
+    { name:'Blizzard',     cost:130, effect:'aoe+1.0',             apply: t => { t.aoe=1.0; } },
+    { name:'Shatter',      cost:120, effect:'frozen enemies take ×2',apply: t => { t.shatter=true; } },
+  ],
+  mortar:    [
+    { name:'Incendiary',   cost:140, effect:'aoe+0.8, poison+20',  apply: t => { t.aoe+=0.8; t.poison=20; } },
+    { name:'Cluster',      cost:160, effect:'fires 3 shells',      apply: t => { t.cluster=true; } },
+    { name:'Siege',        cost:180, effect:'dmg+50, range+2',     apply: t => { t.dmg+=50; t.range+=2; } },
+  ],
+  sniper:    [
+    { name:'Headshot',     cost:130, effect:'crit×3 chance 20%',   apply: t => { t.crit=3; } },
+    { name:'Armor Pierce', cost:120, effect:'ignore all armor',    apply: t => { t.armorPierce=true; } },
+    { name:'Satellite',    cost:180, effect:'range+3',             apply: t => { t.range+=3; } },
+  ],
+  healer:    [
+    { name:'Field Medic',  cost:110, effect:'heal buff +15%',      apply: t => { t.healBonus=(t.healBonus||0)+0.15; } },
+    { name:'Rally',        cost:130, effect:'nearby +10% rate',    apply: t => { t.rallyBonus=true; } },
+    { name:'Sanctuary',    cost:150, effect:'nearby take -20% dmg',apply: t => { t.sanctuary=true; } },
+  ],
+  slinger:   [
+    { name:'Volley',       cost:60,  effect:'rate×2',              apply: t => { t.rate*=2; } },
+    { name:'Heavy Stone',  cost:80,  effect:'dmg×2, slow+0.2',     apply: t => { t.dmg*=2; t.slow+=0.2; } },
+    { name:'Barrage',      cost:90,  effect:'chain+1',             apply: t => { t.chain=1; } },
+  ],
+  econ:      [
+    { name:'Deep Mine',    cost:80,  effect:'gold/wave +6',        apply: t => { t.econ+=6; } },
+    { name:'Vault',        cost:100, effect:'interest +1%',        apply: t => { t.interestBonus=(t.interestBonus||0)+0.01; } },
+    { name:'Trade Post',   cost:120, effect:'gold/wave +10',       apply: t => { t.econ+=10; } },
+  ],
+  detector:  [
+    { name:'Wide Scan',    cost:80,  effect:'range+2',             apply: t => { t.range+=2; } },
+    { name:'Strike Drone', cost:100, effect:'dmg×3',               apply: t => { t.dmg*=3; } },
+    { name:'Jam Signal',   cost:110, effect:'slow+0.3',            apply: t => { t.slow+=0.3; } },
+  ],
+};
+
+// ─── ENEMY DEFINITIONS ───────────────────────────────────
+function makeEnemyDef(wave) {
+  const scale = 1 + wave * 0.12;
+  const defs = [
+    { type:'fodder',   name:'Gremlin',  icon:'👾', hp:40*scale,  speed:1.0, armor:0,    gold:5,  score:10,  flying:false, invisible:false, split:false, boss:false, color:'#88aa44' },
+    { type:'armored',  name:'Ironclad', icon:'🛡️', hp:100*scale, speed:0.7, armor:0.45, gold:12, score:25,  flying:false, invisible:false, split:false, boss:false, color:'#9999bb' },
+    { type:'fast',     name:'Dasher',   icon:'💨', hp:30*scale,  speed:2.2, armor:0,    gold:8,  score:15,  flying:false, invisible:false, split:false, boss:false, color:'#44ddaa' },
+    { type:'flying',   name:'Wraith',   icon:'🦅', hp:60*scale,  speed:1.4, armor:0,    gold:10, score:20,  flying:true,  invisible:false, split:false, boss:false, color:'#aa88ff' },
+    { type:'invisible',name:'Phantom',  icon:'👻', hp:50*scale,  speed:1.1, armor:0,    gold:15, score:30,  flying:false, invisible:true,  split:false, boss:false, color:'#cccccc' },
+    { type:'split',    name:'Blob',     icon:'🫧', hp:80*scale,  speed:0.9, armor:0,    gold:8,  score:20,  flying:false, invisible:false, split:true,  boss:false, color:'#88ff88' },
+    { type:'healer',   name:'Medic',    icon:'🏥', hp:70*scale,  speed:0.8, armor:0.2,  gold:18, score:35,  flying:false, invisible:false, split:false, boss:false, color:'#ffaacc', heals:true },
+  ];
+  return defs;
+}
+
+function makeBoss(wave) {
+  const scale = 1 + wave * 0.18;
+  return { type:'boss', name:'OVERLORD', icon:'💀', hp:800*scale, maxHp:800*scale, speed:0.55, armor:0.35, gold:100+wave*10, score:500+wave*50, flying:false, invisible:false, split:false, boss:true, color:'#ff4444' };
+}
+
+// ─── MARKET ITEMS ────────────────────────────────────────
+const MARKET_POOL = [
+  { name:'Gold Rush',     desc:'+30 gold immediately',     cost:0,   effect: () => { state.gold+=30; addLog('Gold Rush activated! +30g','gold'); } },
+  { name:'Sharpening Kit',desc:'All troops +15% damage',   cost:120, effect: () => { state.troops.forEach(t=>t.dmg*=1.15); addLog('All troops empowered!','wave'); } },
+  { name:'Speed Elixir',  desc:'All troops +20% fire rate',cost:140, effect: () => { state.troops.forEach(t=>t.rate*=1.2); addLog('Troops fired up!','wave'); } },
+  { name:'Iron Shield',   desc:'+5 extra lives',           cost:100, effect: () => { state.lives+=5; updateUI(); } },
+  { name:'Airstrike',     desc:'Kill all non-boss enemies',cost:200, effect: () => { state.enemies=state.enemies.filter(e=>e.boss); addLog('⚡ Airstrike deployed!','boss'); } },
+  { name:'Bounty Board',  desc:'+50% kill gold for 1 wave',cost:80,  effect: () => { state.bountyWave=state.wave+1; addLog('Bounty active next wave!','gold'); } },
+  { name:'Range Beacon',  desc:'All troops +0.5 range',    cost:110, effect: () => { state.troops.forEach(t=>t.range+=0.5); addLog('Range extended!','wave'); } },
+  { name:'Fortify',       desc:'+8 lives + freeze all',    cost:160, effect: () => { state.lives+=8; state.enemies.forEach(e=>e.frozen=3); updateUI(); } },
+  { name:'Supply Drop',   desc:'+100 gold',                cost:0,   effect: () => { state.gold+=100; addLog('+100g supply drop!','gold'); } },
+];
+
+// ─── INIT ─────────────────────────────────────────────────
+let animFrame;
+let lastTime = 0;
+
+function initGame() {
+  state = {
+    gold: 150, lives: 20, wave: 0, score: 0,
+    waveActive: false, waveEnemiesLeft: 0, waveSpawnTimer: 0,
+    selectedTroopType: null, selectedTile: null,
+    troops: [], enemies: [], projectiles: [],
+    gameOver: false, gameStarted: true,
+    speed: 1, paused: false,
+    marketItems: [], marketBought: [],
+    prestigeBonus: state.prestigeBonus || { damage:0, range:0, gold:0 },
+    highScore: state.highScore || 0, totalRuns: (state.totalRuns||0)+1,
+    particles: [], floatingTexts: [],
+    lastBossWave: 0,
+    waveQueue: [],
+    interestRate: 0.03,
+    bountyWave: -1,
+  };
+  buildTroopShop();
+  refreshMarket();
+  updateUI();
+  hideOverlay();
+  if (animFrame) cancelAnimationFrame(animFrame);
+  lastTime = 0;
+  loop(0);
+}
+
+// ─── TROOP SHOP ───────────────────────────────────────────
+function buildTroopShop() {
+  const grid = document.getElementById('troop-grid');
+  grid.innerHTML = '';
+  Object.entries(TROOP_DEFS).forEach(([key, def]) => {
+    const card = document.createElement('div');
+    card.className = 'troop-card';
+    card.id = 'tcard-' + key;
+    card.innerHTML = `<div class="troop-icon">${def.icon}</div><div class="troop-name">${def.name}</div><div class="troop-cost">💰${def.cost}</div>`;
+    card.onclick = () => selectTroopType(key);
+    grid.appendChild(card);
+  });
+}
+
+function selectTroopType(key) {
+  state.selectedTroopType = key;
+  state.selectedTile = null;
+  document.querySelectorAll('.troop-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById('tcard-' + key);
+  if (card) card.classList.add('selected');
+  const def = TROOP_DEFS[key];
+  showInfoPanel(def.name, def, null);
+  document.getElementById('info-upgrade-btn').style.display = 'none';
+  document.getElementById('info-sell-btn').style.display = 'none';
+}
+
+function updateShopAffordability() {
+  Object.entries(TROOP_DEFS).forEach(([key, def]) => {
+    const card = document.getElementById('tcard-' + key);
+    if (card) card.classList.toggle('cant-afford', state.gold < def.cost);
+  });
+}
+
+// ─── CANVAS INTERACTION ───────────────────────────────────
+canvas.addEventListener('click', e => {
+  if (!state.gameStarted || state.gameOver) return;
+  const rect = canvas.getBoundingClientRect();
+  const col = Math.floor((e.clientX - rect.left) / T);
+  const row = Math.floor((e.clientY - rect.top) / T);
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+
+  const key = `${col},${row}`;
+  const existingTroop = state.troops.find(t => t.col === col && t.row === row);
+
+  if (existingTroop) {
+    state.selectedTile = key;
+    state.selectedTroopType = null;
+    document.querySelectorAll('.troop-card').forEach(c => c.classList.remove('selected'));
+    showTroopInfo(existingTroop);
+    return;
+  }
+
+  if (state.selectedTroopType && !PATH_SET.has(key)) {
+    placeTroop(col, row, state.selectedTroopType);
+  }
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  state.selectedTroopType = null;
+  state.selectedTile = null;
+  document.querySelectorAll('.troop-card').forEach(c => c.classList.remove('selected'));
+  resetInfoPanel();
+});
+
+function placeTroop(col, row, type) {
+  const def = TROOP_DEFS[type];
+  if (state.gold < def.cost) { addLog('Not enough gold!','warn'); return; }
+  state.gold -= def.cost;
+  const t = {
+    id: Date.now() + Math.random(),
+    col, row, type,
+    ...JSON.parse(JSON.stringify(def)),
+    name: def.name,
+    icon: def.icon,
+    baseRate: def.rate,
+    cooldown: 0,
+    xp: 0, level: 1,
+    upgradeLevel: 0,
+    target: null,
+    color: def.color,
+  };
+  // Apply prestige
+  t.dmg += state.prestigeBonus.damage;
+  t.range += state.prestigeBonus.range;
+  state.troops.push(t);
+  addLog(`Deployed ${def.name}`, 'kill');
+  updateUI();
+}
+
+function showTroopInfo(troop) {
+  const def = TROOP_DEFS[troop.type];
+  const upg = UPGRADES[troop.type];
+  const nextUpg = upg && upg[troop.upgradeLevel];
+  document.getElementById('info-title').textContent = troop.name.toUpperCase();
+  document.getElementById('info-stats').innerHTML =
+    `Dmg: ${troop.dmg.toFixed(1)}  |  Range: ${troop.range.toFixed(1)}<br>` +
+    `Rate: ${troop.rate.toFixed(2)}/s  |  Lv.${troop.level} (${troop.xp}xp)<br>` +
+    `Kills: ${troop.kills||0}`;
+  document.getElementById('info-desc').textContent = def.desc;
+  const upgradeBtn = document.getElementById('info-upgrade-btn');
+  const sellBtn = document.getElementById('info-sell-btn');
+  if (nextUpg) {
+    upgradeBtn.textContent = `⬆ ${nextUpg.name} (${nextUpg.cost}g)`;
+    upgradeBtn.style.display = 'block';
+    upgradeBtn.dataset.troopId = troop.id;
+    upgradeBtn.classList.toggle('cant-afford', state.gold < nextUpg.cost);
+  } else {
+    upgradeBtn.textContent = '✓ Fully upgraded';
+    upgradeBtn.style.display = 'block';
+    upgradeBtn.dataset.troopId = '';
+  }
+  sellBtn.style.display = 'block';
+  const sellGold = Math.floor(TROOP_DEFS[troop.type].cost * 0.6);
+  sellBtn.textContent = `✕ Sell (+${sellGold}g)`;
+  sellBtn.dataset.troopId = troop.id;
+}
+
+function showInfoPanel(name, def, troop) {
+  document.getElementById('info-title').textContent = name.toUpperCase();
+  document.getElementById('info-stats').innerHTML =
+    `Dmg: ${def.dmg}  |  Range: ${def.range}<br>Rate: ${def.rate}/s  |  Cost: ${def.cost}g`;
+  document.getElementById('info-desc').textContent = def.desc || '';
+}
+
+function resetInfoPanel() {
+  document.getElementById('info-title').textContent = 'SELECT TILE';
+  document.getElementById('info-stats').innerHTML = '';
+  document.getElementById('info-desc').textContent = 'Click a troop to deploy it, or click an existing troop to view stats and upgrades.';
+  document.getElementById('info-upgrade-btn').style.display = 'none';
+  document.getElementById('info-sell-btn').style.display = 'none';
+}
+
+function upgradeSelected() {
+  const id = parseFloat(document.getElementById('info-upgrade-btn').dataset.troopId);
+  if (!id) return;
+  const troop = state.troops.find(t => t.id === id);
+  if (!troop) return;
+  const upg = UPGRADES[troop.type];
+  const nextUpg = upg && upg[troop.upgradeLevel];
+  if (!nextUpg) return;
+  if (state.gold < nextUpg.cost) { addLog('Not enough gold!','warn'); return; }
+  state.gold -= nextUpg.cost;
+  nextUpg.apply(troop);
+  troop.upgradeLevel++;
+  troop.name = nextUpg.name + ' ' + TROOP_DEFS[troop.type].name;
+  addLog(`Upgraded to ${nextUpg.name}!`, 'wave');
+  showTroopInfo(troop);
+  updateUI();
+}
+
+function sellSelected() {
+  const id = parseFloat(document.getElementById('info-sell-btn').dataset.troopId);
+  if (!id) return;
+  const idx = state.troops.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const troop = state.troops[idx];
+  const sellGold = Math.floor(TROOP_DEFS[troop.type].cost * 0.6);
+  state.gold += sellGold;
+  state.troops.splice(idx, 1);
+  addLog(`Sold ${troop.name} for ${sellGold}g`, 'gold');
+  state.selectedTile = null;
+  resetInfoPanel();
+  updateUI();
+}
+
+// ─── WAVE SYSTEM ─────────────────────────────────────────
+function startWave() {
+  if (state.waveActive || state.gameOver || !state.gameStarted) return;
+  state.wave++;
+  state.waveActive = true;
+  state.waveQueue = [];
+  state.waveSpawnTimer = 0;
+
+  // Interest
+  const interest = Math.floor(state.gold * state.interestRate);
+  if (interest > 0) { state.gold += interest; addLog(`Interest earned: +${interest}g`, 'gold'); }
+
+  // Econ troops
+  let econGold = 0;
+  state.troops.forEach(t => {
+    if (t.econ > 0) econGold += t.econ;
+    let bonus = 0;
+    state.troops.forEach(other => { if (other.interestBonus) bonus += other.interestBonus; });
+    if (bonus > 0 && t.econ === 0) {/* skip */}
+  });
+  if (econGold > 0) { state.gold += econGold; addLog(`Mining income: +${econGold}g`, 'gold'); }
+
+  const isBoss = state.wave % 10 === 0;
+  const defs = makeEnemyDef(state.wave);
+
+  if (isBoss) {
+    // Boss wave
+    const count = 8 + Math.floor(state.wave * 0.6);
+    for (let i = 0; i < count; i++) {
+      const d = defs[Math.floor(Math.random() * defs.length)];
+      state.waveQueue.push({ ...d, delay: i * 28 });
+    }
+    state.waveQueue.push({ ...makeBoss(state.wave), delay: count * 28 + 60 });
+    addLog(`⚠ BOSS WAVE ${state.wave}!`, 'boss');
+  } else {
+    const count = 6 + Math.floor(state.wave * 0.8) + Math.floor(Math.random() * 4);
+    for (let i = 0; i < count; i++) {
+      const d = defs[Math.floor(Math.random() * Math.max(1, Math.min(defs.length, Math.floor(state.wave/2)+1)))];
+      state.waveQueue.push({ ...d, delay: i * 22 });
+    }
+    addLog(`Wave ${state.wave} incoming! (${count} enemies)`, 'wave');
+  }
+
+  state.waveEnemiesLeft = state.waveQueue.length;
+  state.waveSpawnTimer = 0;
+  updateUI();
+  document.getElementById('btn-wave').textContent = '⏳ Wave Active';
+  document.getElementById('btn-wave').disabled = true;
+}
+
+function spawnEnemy(def) {
+  const [sc, sr] = PATH_COORDS[0];
+  const e = {
+    id: Date.now() + Math.random(),
+    ...JSON.parse(JSON.stringify(def)),
+    maxHp: def.hp,
+    x: sc * T + T/2, y: sr * T + T/2,
+    pathIndex: 0,
+    poison: 0, poisonTimer: 0,
+    frozen: 0, slowMult: 1,
+    corroded: false,
+    alive: true,
+  };
+  state.enemies.push(e);
+}
+
+// ─── GAME LOOP ────────────────────────────────────────────
+function loop(ts) {
+  animFrame = requestAnimationFrame(loop);
+  if (!state.gameStarted || state.gameOver) return;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05) * state.speed;
+  lastTime = ts;
+  update(dt);
+  draw();
+}
+
+function update(dt) {
+  if (!state.waveActive) return;
+
+  // Spawn
+  state.waveSpawnTimer++;
+  const remaining = state.waveQueue.filter(e => !e.spawned);
+  remaining.forEach(def => {
+    if (state.waveSpawnTimer >= def.delay && !def.spawned) {
+      def.spawned = true;
+      spawnEnemy(def);
+    }
+  });
+
+  // Move enemies
+  state.enemies.forEach(e => {
+    if (!e.alive) return;
+    if (e.frozen > 0) { e.frozen -= dt; e.slowMult = 0.2; }
+    else e.slowMult = 1;
+
+    const spd = e.speed * e.slowMult * T;
+    const [tc, tr] = PATH_COORDS[e.pathIndex + 1] || PATH_COORDS[PATH_COORDS.length-1];
+    const tx = tc * T + T/2, ty = tr * T + T/2;
+    const dx = tx - e.x, dy = ty - e.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < spd * dt + 1) {
+      e.pathIndex++;
+      if (e.pathIndex >= PATH_COORDS.length - 1) {
+        e.alive = false;
+        state.lives -= e.boss ? 5 : 1;
+        updateUI();
+        if (state.lives <= 0) endGame();
+        return;
+      }
+    }
+    e.x += (dx/dist) * spd * dt;
+    e.y += (dy/dist) * spd * dt;
+
+    // Poison DoT
+    if (e.poison > 0) {
+      e.poisonTimer -= dt;
+      if (e.poisonTimer <= 0) {
+        e.hp -= e.poison;
+        e.poisonTimer = 1;
+        if (e.hp <= 0 && e.alive) killEnemy(e);
+      }
+    }
+
+    // Enemy healer
+    if (e.heals) {
+      state.enemies.forEach(other => {
+        if (other.id !== e.id && other.alive && !other.boss) {
+          const ddx = other.x - e.x, ddy = other.y - e.y;
+          if (Math.sqrt(ddx*ddx+ddy*ddy) < T*2) other.hp = Math.min(other.maxHp, other.hp + 3 * dt);
+        }
+      });
+    }
+  });
+
+  // Remove dead
+  state.enemies = state.enemies.filter(e => e.alive);
+
+  // Troops attack
+  state.troops.forEach(troop => {
+    if (troop.heal || troop.econ) {
+      troop.cooldown -= dt;
+      return;
+    }
+    troop.cooldown -= dt;
+    if (troop.cooldown > 0) return;
+
+    // Find target
+    let candidates = state.enemies.filter(e => {
+      if (!e.alive) return false;
+      if (e.flying && !troop.hitFlying) return false;
+      if (e.invisible && !troop.detect && !hasNearbyDetector(troop)) return false;
+      const dx = e.x - (troop.col*T+T/2), dy = e.y - (troop.row*T+T/2);
+      return Math.sqrt(dx*dx+dy*dy) < troop.range * T;
+    });
+
+    if (candidates.length === 0) return;
+    // Target furthest along path
+    candidates.sort((a,b) => b.pathIndex - a.pathIndex);
+    const target = candidates[0];
+
+    troop.cooldown = 1 / troop.rate;
+    troop.target = target;
+
+    if (troop.aoe > 0) {
+      // AoE
+      const cx = target.x, cy = target.y;
+      state.enemies.forEach(e => {
+        if (!e.alive) return;
+        if (e.flying && !troop.hitFlying) return;
+        const dx = e.x - cx, dy = e.y - cy;
+        if (Math.sqrt(dx*dx+dy*dy) < troop.aoe * T) {
+          dealDamage(e, troop, 'aoe');
+          if (troop.aoePoison) e.poison = Math.max(e.poison, troop.aoePoison);
+        }
+      });
+      spawnProjectile(troop.col*T+T/2, troop.row*T+T/2, cx, cy, troop, 'aoe');
+    } else if (troop.chain > 0) {
+      // Chain
+      let hit = [target];
+      dealDamage(target, troop, 'chain');
+      let last = target;
+      for (let i = 1; i < troop.chain; i++) {
+        const next = state.enemies.find(e => e.alive && !hit.includes(e) && Math.sqrt((e.x-last.x)**2+(e.y-last.y)**2) < T*2.5);
+        if (!next) break;
+        dealDamage(next, troop, 'chain');
+        hit.push(next); last = next;
+      }
+      spawnProjectile(troop.col*T+T/2, troop.row*T+T/2, target.x, target.y, troop, 'chain');
+    } else {
+      dealDamage(target, troop, 'normal');
+      spawnProjectile(troop.col*T+T/2, troop.row*T+T/2, target.x, target.y, troop, 'normal');
+    }
+  });
+
+  // Projectiles
+  state.projectiles = state.projectiles.filter(p => {
+    p.x += p.vx * dt * 8;
+    p.y += p.vy * dt * 8;
+    p.life -= dt;
+    return p.life > 0;
+  });
+
+  // Floating texts
+  state.floatingTexts = state.floatingTexts.filter(f => {
+    f.y -= 28 * dt;
+    f.life -= dt;
+    f.alpha = f.life / f.maxLife;
+    return f.life > 0;
+  });
+
+  // Particles
+  state.particles = state.particles.filter(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    return p.life > 0;
+  });
+
+  // Wave end check
+  if (state.waveQueue.every(e => e.spawned) && state.enemies.length === 0) {
+    endWave();
+  }
+}
+
+function hasNearbyDetector(troop) {
+  return state.troops.some(t => t.detect && t.id !== troop.id && Math.abs(t.col-troop.col)+Math.abs(t.row-troop.row) < 4);
+}
+
+function dealDamage(enemy, troop, type) {
+  let dmg = troop.dmg;
+
+  // Level bonus
+  if (troop.level > 1) dmg *= (1 + (troop.level-1) * 0.1);
+
+  // Armor
+  let armor = enemy.armor || 0;
+  if (enemy.corroded) armor *= 0.5;
+  if (troop.armorPierce) armor = 0;
+  if (troop.armorBreak) armor *= 0.3;
+  dmg *= (1 - armor);
+
+  // Shatter (frozen bonus)
+  if (troop.shatter && enemy.frozen > 0) dmg *= 2;
+
+  // Crit
+  if (troop.crit && Math.random() < 0.2) { dmg *= troop.crit; spawnFloat(enemy.x, enemy.y, 'CRIT!', '#ff0'); }
+
+  // Healer buff
+  const nearby = state.troops.filter(t => t.heal && Math.abs(t.col-troop.col)+Math.abs(t.row-troop.row) < 3);
+  if (nearby.length > 0) dmg *= 1 + nearby.length * (0.25 + (nearby[0].healBonus||0));
+
+  // Bounty
+  const goldMult = (state.bountyWave === state.wave) ? 2 : 1;
+
+  if (troop.slow > 0) enemy.frozen = Math.max(enemy.frozen, 2);
+  if (troop.corrode) enemy.corroded = true;
+  if (troop.poison > 0) enemy.poison = Math.max(enemy.poison, troop.poison);
+
+  enemy.hp -= Math.round(dmg);
+
+  spawnFloat(enemy.x, enemy.y, '-' + Math.round(dmg), troop.color);
+  spawnParticles(enemy.x, enemy.y, troop.color);
+
+  // XP
+  troop.xp = (troop.xp||0) + 1;
+  if (troop.xp >= troop.level * 10) { troop.level++; troop.xp=0; addLog(`${troop.name} leveled up! Lv.${troop.level}`,'wave'); }
+
+  if (enemy.hp <= 0 && enemy.alive) {
+    killEnemy(enemy, troop, goldMult);
+  }
+}
+
+function killEnemy(enemy, troop, goldMult=1) {
+  enemy.alive = false;
+  const g = Math.round(enemy.gold * goldMult * (1 + state.prestigeBonus.gold));
+  state.gold += g;
+  state.score += enemy.score;
+  if (troop) troop.kills = (troop.kills||0) + 1;
+
+  if (enemy.boss) addLog(`BOSS SLAIN! +${g}g`, 'boss');
+  else if (enemy.type === 'armored') addLog(`Ironclad down +${g}g`, 'kill');
+
+  // Split
+  if (enemy.split) {
+    for (let i = 0; i < 2; i++) {
+      const mini = { ...enemy, hp: enemy.maxHp * 0.4, maxHp: enemy.maxHp * 0.4, split: false, alive: true, gold: Math.floor(enemy.gold/4), id: Date.now()+Math.random(), x: enemy.x + (i-0.5)*10 };
+      state.enemies.push(mini);
+    }
+    addLog('Blob split!', 'warn');
+  }
+
+  for (let i = 0; i < 8; i++) spawnParticles(enemy.x, enemy.y, enemy.color, true);
+  updateUI();
+}
+
+function endWave() {
+  state.waveActive = false;
+  const bonus = 20 + state.wave * 5;
+  state.gold += bonus;
+  addLog(`Wave ${state.wave} cleared! Bonus: +${bonus}g`, 'gold');
+  document.getElementById('btn-wave').textContent = '▶ Send Wave';
+  document.getElementById('btn-wave').disabled = false;
+  document.getElementById('wave-next-label').textContent = `Ready for wave ${state.wave+1}`;
+  document.getElementById('wave-bar').style.width = '0%';
+  refreshMarket();
+  updateUI();
+}
+
+function endGame() {
+  state.gameOver = true;
+  state.highScore = Math.max(state.highScore, state.score);
+  // Prestige boost (carry over small bonus)
+  state.prestigeBonus.damage += 1;
+  state.prestigeBonus.range += 0.1;
+  state.prestigeBonus.gold += 0.02;
+  showOverlay('GAME OVER', `Wave ${state.wave} — Score ${state.score}`, 'overlayGameOver');
+  addLog('DEFEATED — Prestige bonus earned!', 'boss');
+}
+
+// ─── PROJECTILES ─────────────────────────────────────────
+function spawnProjectile(x1, y1, x2, y2, troop, type) {
+  const dx = x2-x1, dy = y2-y1;
+  const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+  state.projectiles.push({
+    x: x1, y: y1,
+    vx: dx/dist * 300,
+    vy: dy/dist * 300,
+    life: dist / 300 + 0.08,
+    color: troop.color,
+    type, size: type==='aoe' ? 6 : type==='chain' ? 4 : 3,
+  });
+}
+
+function spawnFloat(x, y, text, color) {
+  state.floatingTexts.push({ x, y: y-T/4, text, color, life: 0.7, maxLife: 0.7, alpha: 1 });
+}
+
+function spawnParticles(x, y, color, burst=false) {
+  const n = burst ? 8 : 3;
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = burst ? 80 + Math.random()*80 : 30 + Math.random()*40;
+    state.particles.push({
+      x, y,
+      vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+      life: 0.3 + Math.random()*0.3, color, size: 2+Math.random()*3,
+    });
+  }
+}
+
+// ─── DRAW ─────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const key = `${c},${r}`;
+      const isPath = PATH_SET.has(key);
+      ctx.fillStyle = isPath ? '#1a2418' : '#0e1520';
+      ctx.fillRect(c*T, r*T, T, T);
+      ctx.strokeStyle = isPath ? '#2a3a28' : '#141e2c';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(c*T, r*T, T, T);
+    }
+  }
+
+  // Path highlight
+  PATH_COORDS.forEach(([c,r], i) => {
+    ctx.fillStyle = 'rgba(80,140,60,0.08)';
+    ctx.fillRect(c*T+1, r*T+1, T-2, T-2);
+  });
+
+  // Start/end markers
+  const [sc, sr] = PATH_COORDS[0];
+  const [ec, er] = PATH_COORDS[PATH_COORDS.length-1];
+  ctx.fillStyle = 'rgba(255,100,100,0.25)';
+  ctx.fillRect(sc*T, sr*T, T, T);
+  ctx.fillStyle = 'rgba(100,100,255,0.25)';
+  ctx.fillRect(ec*T, er*T, T, T);
+  ctx.fillStyle = '#ff6666'; ctx.font = 'bold 14px monospace'; ctx.textAlign='center';
+  ctx.fillText('IN', sc*T+T/2, sr*T+T/2+5);
+  ctx.fillStyle = '#6666ff';
+  ctx.fillText('OUT', ec*T+T/2, er*T+T/2+5);
+
+  // Selected tile highlight
+  if (state.selectedTroopType) {
+    const c2 = canvas.getBoundingClientRect();
+  }
+
+  // Troops
+  state.troops.forEach(troop => {
+    const x = troop.col*T, y = troop.row*T;
+    const cx = x + T/2, cy = y + T/2;
+    const isSelected = state.selectedTile === `${troop.col},${troop.row}`;
+
+    // Range circle (when selected)
+    if (isSelected) {
+      ctx.beginPath(); ctx.arc(cx, cy, troop.range*T, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(0,229,255,0.05)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,229,255,0.3)';
+      ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // Tile bg
+    ctx.fillStyle = isSelected ? 'rgba(0,229,255,0.12)' : 'rgba(20,40,60,0.8)';
+    ctx.fillRect(x+2, y+2, T-4, T-4);
+    ctx.strokeStyle = isSelected ? '#00e5ff' : troop.color;
+    ctx.lineWidth = isSelected ? 1.5 : 0.8;
+    ctx.strokeRect(x+2, y+2, T-4, T-4);
+
+    // Level badge
+    if (troop.level > 1) {
+      ctx.fillStyle = '#ffd700'; ctx.font = 'bold 9px monospace'; ctx.textAlign='left';
+      ctx.fillText('L'+troop.level, x+3, y+10);
+    }
+
+    // Upgrade badge
+    if (troop.upgradeLevel > 0) {
+      ctx.fillStyle = '#00e5ff'; ctx.font = 'bold 8px monospace';
+      ctx.fillText('★'.repeat(troop.upgradeLevel), x+3, y+T-3);
+    }
+
+    // Icon
+    ctx.font = '20px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(troop.icon, cx, cy+7);
+  });
+
+  // Enemies
+  state.enemies.forEach(e => {
+    if (!e.alive) return;
+    const cx = e.x, cy = e.y;
+
+    // Invisible styling
+    if (e.invisible) {
+      // Only draw if detector nearby
+      const detected = state.troops.some(t => t.detect && Math.sqrt((t.col*T+T/2-cx)**2+(t.row*T+T/2-cy)**2) < t.range*T);
+      if (!detected) {
+        ctx.globalAlpha = 0.2;
+      }
+    }
+
+    // Body
+    const r = e.boss ? T*0.65 : T*0.35;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fillStyle = e.boss ? e.color : e.color + 'cc';
+    ctx.fill();
+    if (e.frozen > 0) { ctx.strokeStyle='#88ccff'; ctx.lineWidth=2; ctx.stroke(); }
+    else if (e.poison > 0) { ctx.strokeStyle='#55cc88'; ctx.lineWidth=1.5; ctx.stroke(); }
+    else { ctx.strokeStyle=e.color; ctx.lineWidth=0.5; ctx.stroke(); }
+
+    // Armor indicator
+    if (e.armor > 0) {
+      ctx.strokeStyle = '#9999bb'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, r*1.15, 0, Math.PI*2*e.armor); ctx.stroke();
+    }
+
+    // HP bar
+    const bw = e.boss ? T*1.4 : T*0.8;
+    const bh = e.boss ? 6 : 3;
+    const bx = cx - bw/2, by = cy - r - bh - 3;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(bx, by, bw, bh);
+    const pct = Math.max(0, e.hp / e.maxHp);
+    ctx.fillStyle = pct > 0.6 ? '#4a9' : pct > 0.3 ? '#fa4' : '#f44';
+    ctx.fillRect(bx, by, bw*pct, bh);
+    if (e.boss) {
+      ctx.font = 'bold 10px monospace'; ctx.fillStyle='#fff'; ctx.textAlign='center';
+      ctx.fillText(e.name, cx, by-4);
+    }
+
+    ctx.globalAlpha = 1;
+  });
+
+  // Projectiles
+  state.projectiles.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life > 0 ? Math.min(1, p.life*10) : 0;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  // Particles
+  state.particles.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 0.5;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Floating damage
+  state.floatingTexts.forEach(f => {
+    ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
+    ctx.globalAlpha = f.alpha;
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  });
+  ctx.globalAlpha = 1;
+
+  // Wave progress bar
+  if (state.waveActive) {
+    const total = state.waveQueue.length;
+    const spawned = state.waveQueue.filter(e=>e.spawned).length;
+    const alive = state.enemies.length;
+    const progress = (spawned - alive) / Math.max(1, total);
+    document.getElementById('wave-bar').style.width = (progress*100).toFixed(1)+'%';
+  }
+}
+
+// ─── UI ────────────────────────────────────────────────────
+function updateUI() {
+  document.getElementById('stat-gold').textContent = state.gold;
+  document.getElementById('stat-lives').textContent = state.lives;
+  document.getElementById('stat-wave').textContent = state.wave;
+  document.getElementById('stat-score').textContent = state.score;
+  updateShopAffordability();
+  const interestGold = Math.floor(state.gold * state.interestRate);
+  document.getElementById('interest-note').textContent = interestGold > 0 ? `Next wave interest: +${interestGold}g` : '';
+}
+
+function addLog(msg, type='') {
+  const el = document.getElementById('log-entries');
+  const div = document.createElement('div');
+  div.className = `entry-${type}`;
+  div.textContent = `› ${msg}`;
+  el.prepend(div);
+  if (el.children.length > 80) el.removeChild(el.lastChild);
+}
+
+// ─── SPEED ────────────────────────────────────────────────
+function cycleSpeed() {
+  const speeds = [1, 2, 4];
+  const idx = speeds.indexOf(state.speed);
+  state.speed = speeds[(idx+1) % speeds.length];
+  document.getElementById('speed-display').textContent = state.speed + '×';
+  document.getElementById('btn-speed').classList.toggle('active', state.speed > 1);
+}
+
+// ─── OVERLAY ──────────────────────────────────────────────
+let overlayMode = 'start';
+function showOverlay(title, sub, mode) {
+  overlayMode = mode;
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('overlay-title').textContent = title;
+  document.getElementById('overlay-sub').textContent = sub;
+  if (mode === 'start') {
+    document.getElementById('overlay-btn1').textContent = '▶ Start Game';
+    document.getElementById('overlay-btn2').style.display = 'none';
+    document.getElementById('overlay-stats').innerHTML = `
+      <b>How to Play:</b><br>
+      Select a troop from the left panel, then click any empty (non-path) tile to place it.<br><br>
+      Press "Send Wave" to start each wave. Earn gold from kills and bonuses to place more troops.<br><br>
+      Interest: +3% of your gold each wave. Don't go broke!<br><br>
+      Click placed troops to upgrade or sell them. Boss waves every 10 rounds.<br>
+    `;
+  } else {
+    document.getElementById('overlay-btn1').textContent = '▶ Play Again';
+    document.getElementById('overlay-btn2').style.display = 'block';
+    document.getElementById('overlay-stats').innerHTML = `
+      Wave reached: <span>${state.wave}</span>
+      Final score: <span>${state.score}</span>
+      High score: <span>${state.highScore}</span>
+      Total runs: <span>${state.totalRuns}</span>
+      Prestige (carry): <span>+${state.prestigeBonus.damage.toFixed(0)} dmg</span>
+    `;
+  }
+}
+
+function hideOverlay() { document.getElementById('overlay').classList.add('hidden'); }
+function overlayBtn1() { initGame(); }
+function overlayBtn2() { initGame(); }
+
+// ─── MARKET ───────────────────────────────────────────────
+function refreshMarket() {
+  state.marketItems = [];
+  const pool = [...MARKET_POOL].sort(() => Math.random()-0.5).slice(0, 4);
+  state.marketItems = pool;
+}
+
+function openMarket() {
+  if (!state.gameStarted || state.gameOver) return;
+  const container = document.getElementById('market-items');
+  container.innerHTML = '';
+  state.marketItems.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'market-item' + (state.gold < item.cost ? ' cant-afford' : '');
+    div.innerHTML = `<div class="market-item-name">${item.name}</div><div class="market-item-desc">${item.desc}</div><div class="market-item-cost">${item.cost > 0 ? '💰'+item.cost : 'FREE'}</div>`;
+    div.onclick = () => buyMarketItem(i);
+    container.appendChild(div);
+  });
+  document.getElementById('market-overlay').classList.remove('hidden');
+}
+
+function buyMarketItem(i) {
+  const item = state.marketItems[i];
+  if (!item) return;
+  if (state.gold < item.cost) { addLog('Not enough gold!','warn'); return; }
+  state.gold -= item.cost;
+  item.effect();
+  state.marketItems.splice(i, 1);
+  updateUI();
+  openMarket();
+}
+
+function closeMarket() { document.getElementById('market-overlay').classList.add('hidden'); }
+
+// ─── BOOT ──────────────────────────────────────────────────
+resizeCanvas();
+showOverlay('IRON HOLD', 'Infinite Tower Defense', 'start');
+buildTroopShop();
+
+// keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === ' ') { e.preventDefault(); startWave(); }
+  if (e.key === 'f' || e.key === 'F') cycleSpeed();
+  if (e.key === 'Escape') { state.selectedTroopType=null; state.selectedTile=null; document.querySelectorAll('.troop-card').forEach(c=>c.classList.remove('selected')); resetInfoPanel(); }
+});
+
+// Dummy loop to show grid before start
+function preLoop(ts) {
+  if (!state.gameStarted) {
+    requestAnimationFrame(preLoop);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+      const isPath=PATH_SET.has(`${c},${r}`);
+      ctx.fillStyle=isPath?'#1a2418':'#0e1520';
+      ctx.fillRect(c*T,r*T,T,T);
+      ctx.strokeStyle=isPath?'#2a3a28':'#141e2c';
+      ctx.lineWidth=0.5; ctx.strokeRect(c*T,r*T,T,T);
+    }
+    PATH_COORDS.forEach(([c,r])=>{ctx.fillStyle='rgba(80,140,60,0.08)';ctx.fillRect(c*T+1,r*T+1,T-2,T-2);});
+    const [sc,sr]=PATH_COORDS[0];const [ec,er]=PATH_COORDS[PATH_COORDS.length-1];
+    ctx.fillStyle='rgba(255,100,100,0.25)';ctx.fillRect(sc*T,sr*T,T,T);
+    ctx.fillStyle='rgba(100,100,255,0.25)';ctx.fillRect(ec*T,er*T,T,T);
+    ctx.fillStyle='#ff6666';ctx.font='bold 14px monospace';ctx.textAlign='center';
+    ctx.fillText('IN',sc*T+T/2,sr*T+T/2+5);
+    ctx.fillStyle='#6666ff';ctx.fillText('OUT',ec*T+T/2,er*T+T/2+5);
+  }
+}
+preLoop(0);
+</script>
+</body>
+</html>
